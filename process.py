@@ -17,8 +17,6 @@ def parse_timestamp_from_filename(filename):
         return datetime.strptime(timestamp_str, '%Y%m%d%H%M%S')
     return None
 
-
-
 def create_voltage_plots(df, output_path, sequence_name):
     """Create plots for cell voltages over time with enhanced statistics"""
     print("Starting plot creation...")
@@ -45,7 +43,7 @@ def create_voltage_plots(df, output_path, sequence_name):
         
         # Resample only the numeric data
         print("Resampling data...")
-        df_resampled = plot_df.resample('0.5min').mean()
+        df_resampled = plot_df.resample('1min').mean()
         df_resampled.reset_index(inplace=True)
         
         print("Creating main voltage plot...")
@@ -88,6 +86,9 @@ def create_voltage_plots(df, output_path, sequence_name):
         print("Creating statistics plot...")
         plt.figure(figsize=(15, 10))
         
+        # Get the current axes
+        ax1 = plt.gca()
+        
         # Calculate statistics only for non-zero values
         voltage_data = df_resampled[voltage_columns]
         mask = voltage_data.notna() & (voltage_data > 0)
@@ -102,49 +103,61 @@ def create_voltage_plots(df, output_path, sequence_name):
         max_voltage = voltage_data[mask].max(axis=1)
         
         if mean_voltage.notna().any():
-            plt.plot(df_resampled['Date & Time'], 
-                    mean_voltage,
-                    label='Mean Voltage',
-                    color='blue',
-                    linewidth=2)
+            # Create a blue line for mean voltage
+            mean_line = ax1.plot(df_resampled['Date & Time'], 
+                               mean_voltage,
+                               color='blue',
+                               linewidth=2,
+                               label='Mean Cell Voltage')
             
             valid_range = min_voltage.notna() & max_voltage.notna()
             if valid_range.any():
-                plt.fill_between(df_resampled['Date & Time'][valid_range],
-                               min_voltage[valid_range],
-                               max_voltage[valid_range],
-                               alpha=0.2,
-                               color='blue',
-                               label='Min-Max Range')
+                # Create the blue shaded area for min-max range
+                range_fill = ax1.fill_between(df_resampled['Date & Time'][valid_range],
+                                            min_voltage[valid_range],
+                                            max_voltage[valid_range],
+                                            alpha=0.2,
+                                            color='blue',
+                                            label='Min-Max Voltage Range')
             
-            # Add voltage spread
-            ax2 = plt.gca().twinx()
+            # Create secondary y-axis for voltage spread
+            ax2 = ax1.twinx()
             voltage_spread = max_voltage - min_voltage
             valid_spread = voltage_spread.notna()
             if valid_spread.any():
-                ax2.plot(df_resampled['Date & Time'][valid_spread],
-                        voltage_spread[valid_spread],
-                        label='Voltage Spread',
-                        color='red',
-                        linestyle='--',
-                        alpha=0.7)
+                # Create the red dashed line for voltage spread
+                spread_line = ax2.plot(df_resampled['Date & Time'][valid_spread],
+                                     voltage_spread[valid_spread],
+                                     color='red',
+                                     linestyle='--',
+                                     alpha=0.7,
+                                     label='Cell Voltage Spread (Max-Min)')
             
             # Formatting
-            plt.title(f'Voltage Statistics Over Time - {sequence_name}')
-            plt.gca().set_xlabel('Time')
-            plt.gca().set_ylabel('Voltage (V)')
-            ax2.set_ylabel('Voltage Spread (V)')
+            ax1.set_title(f'Voltage Statistics Over Time - {sequence_name}')
+            ax1.set_xlabel('Time')
+            ax1.set_ylabel('Cell Voltage (V)', color='blue')
+            ax2.set_ylabel('Voltage Spread (V)', color='red')
             
-            plt.gca().xaxis.set_major_formatter(DateFormatter('%Y-%m-%d %H:%M'))
+            ax1.xaxis.set_major_formatter(DateFormatter('%Y-%m-%d %H:%M'))
             plt.xticks(rotation=45)
             
-            # Combine legends
-            lines1, labels1 = plt.gca().get_legend_handles_labels()
-            lines2, labels2 = ax2.get_legend_handles_labels()
-            if lines1 or lines2:
-                ax2.legend(lines1 + lines2, labels1 + labels2,
-                          bbox_to_anchor=(1.05, 1),
-                          loc='upper left')
+            # Collect all the legend elements
+            legend_elements = [
+                plt.Line2D([0], [0], color='blue', linewidth=2, label='Mean Cell Voltage'),
+                plt.Rectangle((0, 0), 1, 1, fc='blue', alpha=0.2, label='Min-Max Voltage Range'),
+                plt.Line2D([0], [0], color='red', linestyle='--', alpha=0.7, label='Cell Voltage Spread (Max-Min)')
+            ]
+            
+            # Create a single legend with all elements
+            ax1.legend(handles=legend_elements,
+                      title='Plot Elements:',
+                      bbox_to_anchor=(1.05, 1),
+                      loc='upper left',
+                      borderaxespad=0.,
+                      frameon=True,
+                      shadow=True,
+                      fancybox=True)
             
             # Save the statistics plot
             stats_plot_path = output_path.parent / f"{output_path.stem}_voltage_stats.png"
@@ -157,6 +170,7 @@ def create_voltage_plots(df, output_path, sequence_name):
         print(f"Error during plot creation: {str(e)}")
         plt.close()  # Ensure any open figures are closed
         raise
+
 
 def process_excel_files(directory_path, output_directory):
     """Main function to process Excel files and concatenate continuous sequences"""
